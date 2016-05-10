@@ -1,0 +1,138 @@
+diff --git a/ixgbe/ixgbe_main.c b/ixgbe/ixgbe_main.c
+index f9eb65b..8aca115 100644
+--- a/ixgbe/ixgbe_main.c
++++ b/ixgbe/ixgbe_main.c
+@@ -427,6 +427,23 @@ u32 ixgbe_read_reg(struct ixgbe_hw *hw, u32 reg, bool quiet)
+ 	return value;
+ }
+ 
++#if defined(CONFIG_NETMAP) || defined(CONFIG_NETMAP_MODULE)
++/*
++ * The #ifdef DEV_NETMAP / #endif blocks in this file are meant to
++ * be a reference on how to implement netmap support in a driver.
++ * Additional comments are in ixgbe_netmap_linux.h .
++ *
++ * The code is originally developed on FreeBSD and in the interest
++ * of maintainability we try to limit differences between the two systems.
++ *
++ * <ixgbe_netmap_linux.h> contains functions for netmap support
++ * that extend the standard driver.
++ * It also defines DEV_NETMAP so further conditional sections use
++ * that instead of CONFIG_NETMAP
++ */
++#include <ixgbe_netmap_linux.h>
++#endif
++
+ static void ixgbe_release_hw_control(struct ixgbe_adapter *adapter)
+ {
+ 	u32 ctrl_ext;
+@@ -725,7 +742,16 @@ static bool ixgbe_clean_tx_irq(struct ixgbe_q_vector *q_vector,
+ 
+ 	if (test_bit(__IXGBE_DOWN, &adapter->state))
+ 		return true;
+-
++#ifdef DEV_NETMAP
++       /*
++        * In netmap mode, all the work is done in the context
++        * of the client thread. Interrupt handlers only wake up
++        * clients, which may be sleeping on individual rings
++        * or on a global resource for all rings.
++        */
++       if (netmap_tx_irq(adapter->netdev, tx_ring->queue_index))
++               return 1; /* seems to be ignored */
++#endif /* DEV_NETMAP */
+ 	tx_buffer = &tx_ring->tx_buffer_info[i];
+ 	tx_desc = IXGBE_TX_DESC(tx_ring, i);
+ 	i -= tx_ring->count;
+@@ -2276,6 +2302,14 @@ static int ixgbe_clean_rx_irq(struct ixgbe_q_vector *q_vector,
+ 	int ddp_bytes = 0;
+ #endif /* CONFIG_FCOE */
+ 	u16 cleaned_count = ixgbe_desc_unused(rx_ring);
++#ifdef DEV_NETMAP
++       /*
++        *       Same as the txeof routine: only wakeup clients on intr.
++        */
++       int dummy;
++       if (netmap_rx_irq(rx_ring->netdev, rx_ring->queue_index, &dummy))
++       return true; /* no more interrupts */
++#endif /* DEV_NETMAP */
+ 
+ 	do {
+ 		union ixgbe_adv_rx_desc *rx_desc;
+@@ -2945,6 +2979,33 @@ static void ixgbe_irq_enable_queues(struct ixgbe_adapter *adapter, u64 qmask)
+ 	/* skip the flush */
+ }
+ 
++static void ixgbe_irq_disable_queues(struct ixgbe_adapter *adapter, u64 qmask)
++{
++        u32 mask;
++        struct ixgbe_hw *hw = &adapter->hw;
++
++        switch (hw->mac.type) {
++        case ixgbe_mac_82598EB:
++                mask = (IXGBE_EIMS_RTX_QUEUE & qmask);
++                IXGBE_WRITE_REG(hw, IXGBE_EIMC, mask);
++                break;
++        case ixgbe_mac_82599EB:
++        case ixgbe_mac_X540:
++        case ixgbe_mac_X550:
++        case ixgbe_mac_X550EM_x:
++                mask = (qmask & 0xFFFFFFFF);
++                if (mask)
++                        IXGBE_WRITE_REG(hw, IXGBE_EIMC_EX(0), mask);
++                mask = (qmask >> 32);
++                if (mask)
++                        IXGBE_WRITE_REG(hw, IXGBE_EIMC_EX(1), mask);
++                break;
++        default:
++                break;
++        }
++        /* skip the flush */
++}
++
+ /**
+  * ixgbe_irq_enable - Enable default interrupt generation settings
+  * @adapter: board private structure
+@@ -3530,6 +3591,9 @@ void ixgbe_configure_tx_ring(struct ixgbe_adapter *adapter,
+ 	} while (--wait_loop && !(txdctl & IXGBE_TXDCTL_ENABLE));
+ 	if (!wait_loop)
+ 		e_err(drv, "Could not enable Tx Queue %d\n", reg_idx);
++#ifdef DEV_NETMAP
++       ixgbe_netmap_configure_tx_ring(adapter, reg_idx);
++#endif /* DEV_NETMAP */
+ }
+ 
+ static void ixgbe_setup_mtqc(struct ixgbe_adapter *adapter)
+@@ -4047,6 +4111,10 @@ void ixgbe_configure_rx_ring(struct ixgbe_adapter *adapter,
+ 	IXGBE_WRITE_REG(hw, IXGBE_RXDCTL(reg_idx), rxdctl);
+ 
+ 	ixgbe_rx_desc_queue_enable(adapter, ring);
++#ifdef DEV_NETMAP
++       if (ixgbe_netmap_configure_rx_ring(adapter, reg_idx))
++               return;
++#endif /* DEV_NETMAP */
+ 	ixgbe_alloc_rx_buffers(ring, ixgbe_desc_unused(ring));
+ }
+ 
+@@ -10446,6 +10514,9 @@ no_info_string:
+ 		hw->mac.ops.setup_link(hw,
+ 			IXGBE_LINK_SPEED_10GB_FULL | IXGBE_LINK_SPEED_1GB_FULL,
+ 			true);
++#ifdef DEV_NETMAP
++       ixgbe_netmap_attach(adapter);
++#endif /* DEV_NETMAP */
+ 
+ 	return 0;
+ 
+@@ -10492,6 +10563,11 @@ static void __devexit ixgbe_remove(struct pci_dev *pdev)
+ 		return;
+ 
+ 	netdev = adapter->netdev;
++
++#ifdef DEV_NETMAP
++       netmap_detach(netdev);
++#endif /* DEV_NETMAP */
++
+ #ifdef HAVE_IXGBE_DEBUG_FS
+ 	ixgbe_dbg_adapter_exit(adapter);
+ 

@@ -708,6 +708,33 @@ struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	}
 }
 
+static int ixgbe_tx_maxrate(struct net_device *netdev,
+			    int queue_index, u32 maxrate)
+{
+	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+	struct ixgbe_hw *hw = &adapter->hw;
+	u32 bcnrc_val = ixgbe_link_mbps(adapter);
+
+	if (!maxrate)
+		return 0;
+
+	/* Calculate the rate factor values to set */
+	bcnrc_val <<= IXGBE_RTTBCNRC_RF_INT_SHIFT;
+	bcnrc_val /= maxrate;
+
+	/* clear everything but the rate factor */
+	bcnrc_val &= IXGBE_RTTBCNRC_RF_INT_MASK |
+		     IXGBE_RTTBCNRC_RF_DEC_MASK;
+
+	/* enable the rate scheduler */
+	bcnrc_val |= IXGBE_RTTBCNRC_RS_ENA;
+
+	IXGBE_WRITE_REG(hw, IXGBE_RTTDQSEL, queue_index);
+	IXGBE_WRITE_REG(hw, IXGBE_RTTBCNRC, bcnrc_val);
+
+	return 0;
+}
+
 /**
  * ixgbe_clean_tx_irq - Reclaim resources after transmit completes
  * @q_vector: structure containing interrupt and ring information
@@ -9611,6 +9638,7 @@ static const struct net_device_ops ixgbe_netdev_ops = {
 	.ndo_set_mac_address	= ixgbe_set_mac,
 	.ndo_change_mtu		= ixgbe_change_mtu,
 	.ndo_tx_timeout		= ixgbe_tx_timeout,
+	.ndo_set_tx_maxrate	= ixgbe_tx_maxrate,
 #if defined(NETIF_F_HW_VLAN_TX) || defined(NETIF_F_HW_VLAN_CTAG_TX)
 	.ndo_vlan_rx_add_vid	= ixgbe_vlan_rx_add_vid,
 	.ndo_vlan_rx_kill_vid	= ixgbe_vlan_rx_kill_vid,

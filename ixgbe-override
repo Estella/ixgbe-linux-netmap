@@ -1,0 +1,3 @@
+ixgbe-dst := ixgbe
+ixgbe-patch := patches/diff--ixgbe--40313--native
+ixgbe-src := %{DRV_PATH}/src

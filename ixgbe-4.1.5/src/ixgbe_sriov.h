@@ -33,6 +33,7 @@
 
 void ixgbe_restore_vf_multicasts(struct ixgbe_adapter *adapter);
 int ixgbe_set_vf_vlan(struct ixgbe_adapter *adapter, int add, int vid, u32 vf);
+int ixgbe_link_mbps(struct ixgbe_adapter *adapter);
 void ixgbe_set_vmolr(struct ixgbe_hw *hw, u32 vf, bool aupe);
 void ixgbe_msg_task(struct ixgbe_adapter *adapter);
 int ixgbe_set_vf_mac(struct ixgbe_adapter *adapter,

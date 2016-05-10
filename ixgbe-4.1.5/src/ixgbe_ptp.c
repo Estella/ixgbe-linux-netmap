@@ -24,6 +24,7 @@
 
 #include "ixgbe.h"
 #include <linux/ptp_classify.h>
+#include <linux/clocksource.h>
 
 /*
  * The 82599 and the X540 do not have true 64bit nanosecond scale
