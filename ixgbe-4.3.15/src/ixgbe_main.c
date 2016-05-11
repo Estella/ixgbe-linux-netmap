@@ -2966,6 +2966,33 @@ static void ixgbe_check_lsc(struct ixgbe_adapter *adapter)
 	}
 }
 
+static void ixgbe_irq_disable_queues(struct ixgbe_adapter *adapter, u64 qmask)
+{
+        u32 mask; 
+        struct ixgbe_hw *hw = &adapter->hw;
+
+        switch (hw->mac.type) {
+        case ixgbe_mac_82598EB:
+                mask = (IXGBE_EIMS_RTX_QUEUE & qmask);
+                IXGBE_WRITE_REG(hw, IXGBE_EIMC, mask);
+                break;
+        case ixgbe_mac_82599EB:
+        case ixgbe_mac_X540:
+        case ixgbe_mac_X550:
+        case ixgbe_mac_X550EM_x:
+                mask = (qmask & 0xFFFFFFFF);
+                if (mask)
+                        IXGBE_WRITE_REG(hw, IXGBE_EIMC_EX(0), mask);
+                mask = (qmask >> 32);
+                if (mask)
+                        IXGBE_WRITE_REG(hw, IXGBE_EIMC_EX(1), mask);
+                break;
+        default:
+                break;
+        }     
+        /* skip the flush */
+}
+
 static void ixgbe_irq_enable_queues(struct ixgbe_adapter *adapter, u64 qmask)
 {
 	u32 mask;
