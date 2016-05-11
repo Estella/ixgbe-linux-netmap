@@ -6766,10 +6766,6 @@ static int ixgbe_open(struct net_device *netdev)
 	vxlan_get_rx_port(netdev);
 #endif /* HAVE_VXLAN_CHECKS */
 
-#ifdef DEV_NETMAP
-       ixgbe_netmap_attach(adapter);
-#endif /* DEV_NETMAP */
-
 	return IXGBE_SUCCESS;
 
 err_set_queues:
@@ -10509,6 +10505,10 @@ no_info_string:
 		hw->mac.ops.setup_link(hw,
 			IXGBE_LINK_SPEED_10GB_FULL | IXGBE_LINK_SPEED_1GB_FULL,
 			true);
+
+#ifdef DEV_NETMAP
+        ixgbe_netmap_attach(adapter);
+#endif /* DEV_NETMAP */
 
 	return 0;
 
